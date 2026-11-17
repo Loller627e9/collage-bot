@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+config.local.py
+
+# Keep source as direct files - never commit archives
+*.zip
+*.tar.gz
+*.tgz

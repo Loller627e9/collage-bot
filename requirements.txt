@@ -1,0 +1,5 @@
+python-telegram-bot[webhooks]~=22.8
+Pillow>=10.1,<13
+
+# Tests only. The Gemini client uses the standard library, so no SDK is needed.
+pytest>=8.0
