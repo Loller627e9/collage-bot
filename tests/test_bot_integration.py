@@ -50,8 +50,8 @@ class TestConfig:
 
 
 class TestHandlersExist:
-    @pytest.mark.parametrize("name", ["cmd_analyze", "cmd_desc", "cb_desc",
-                                      "run_investigation", "_fetch_parts",
+    @pytest.mark.parametrize("name", ["cmd_analyze", "cmd_listing", "cmd_desc", "cb_desc",
+                                      "run_investigation", "_fetch_parts", "_send_listing",
                                       "investigation_available"])
     def test_handler_is_defined(self, name):
         assert callable(getattr(bot, name))
@@ -171,6 +171,68 @@ class TestStatusText:
         if bot.INVESTIGATOR:
             assert bot.DESC_LABELS
             assert hasattr(bot.Prefs(), "desc_type")
+
+
+class TestSendListing:
+    """`/listing` must deliver only the title and copy — nothing to delete by hand."""
+
+    class _Bot:
+        def __init__(self):
+            self.messages: list[str] = []
+
+        async def send_message(self, chat_id, text):
+            self.messages.append(text)
+            return None
+
+    def _result(self, descriptions):
+        return type("R", (), {"descriptions": descriptions})()
+
+    def _desc(self, kind, title, body):
+        from pokego.descriptions import Description
+        return Description(kind, "t", body, listing_title=title)
+
+    def test_single_style_sends_title_then_body_only(self):
+        result = self._result({bot.ELDORADO: self._desc(bot.ELDORADO, "👑 TITLE", "Body copy.")})
+        b = self._Bot()
+        asyncio.run(bot._send_listing(b, 1, result))
+        assert b.messages == ["🏷 👑 TITLE\n\nBody copy."]
+
+    def test_single_style_carries_no_label_or_confidence(self):
+        result = self._result({bot.ELDORADO: self._desc(bot.ELDORADO, "👑 TITLE", "Body copy.")})
+        b = self._Bot()
+        asyncio.run(bot._send_listing(b, 1, result))
+        sent = b.messages[0]
+        for noise in ("Confidence", "Eldorado", "Account classification", "no price"):
+            assert noise not in sent
+
+    def test_both_styles_are_labelled_so_they_are_tellable_apart(self):
+        result = self._result({
+            bot.ELDORADO: self._desc(bot.ELDORADO, "👑 T", "Eldorado copy."),
+            bot.AUCTION: self._desc(bot.AUCTION, "🔨 T", "Auction copy."),
+        })
+        b = self._Bot()
+        asyncio.run(bot._send_listing(b, 1, result))
+        assert len(b.messages) == 2
+        assert b.messages[0].startswith("Eldorado")
+        assert b.messages[1].startswith("Auction")
+
+    def test_no_descriptions_reports_honestly(self):
+        b = self._Bot()
+        asyncio.run(bot._send_listing(b, 1, self._result({})))
+        assert "No listing" in b.messages[0]
+
+    def test_listing_omits_the_notice_but_analyze_shows_it(self):
+        """The guardrail must not disappear: /analyze keeps it, /listing drops it."""
+        from pokego.descriptions import VALUATION_NOTICE
+        desc = self._desc(bot.ELDORADO, "👑 TITLE", "Body copy.")
+        desc.notice = VALUATION_NOTICE
+        result = self._result({bot.ELDORADO: desc})
+
+        b = self._Bot()
+        asyncio.run(bot._send_listing(b, 1, result))
+        assert VALUATION_NOTICE not in b.messages[0]
+
+        assert desc.notice == VALUATION_NOTICE  # still available to /analyze
 
 
 class TestReportDelivery:

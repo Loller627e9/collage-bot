@@ -44,10 +44,18 @@ class Description:
     body: str
     source: str = "deterministic"
     listing_title: str = ""
+    notice: str = ""
+
+    @property
+    def paste_text(self) -> str:
+        """Title then copy, ready to paste into a listing. No labels, no notices."""
+        parts = [self.listing_title.strip(), self.body.strip()]
+        return "\n\n".join(p for p in parts if p)
 
     def to_dict(self) -> dict:
         return {"kind": self.kind, "title": self.title, "body": self.body,
-                "source": self.source, "listing_title": self.listing_title}
+                "source": self.source, "listing_title": self.listing_title,
+                "notice": self.notice, "paste_text": self.paste_text}
 
 
 def _num(value) -> str:
@@ -57,6 +65,38 @@ def _num(value) -> str:
     if isinstance(value, (int, float)):
         return f"{value:,.0f}"
     return str(value)
+
+
+_CLASS_EMOJI = {"STACKED": "👑", "MID": "💎", "MINI": "🎮"}
+
+
+def _class_emoji(classification: ClassificationResult) -> str:
+    return _CLASS_EMOJI.get(classification.account_class.value, "🔥")
+
+
+def _lead_line(counts: dict) -> str:
+    """A punchy opener naming only what the scan actually holds."""
+    parts: list[str] = []
+    if counts["shundo"]:
+        parts.append(_plural(counts["shundo"], "Shundo", "Shundos"))
+    if counts["shiny_legendary"]:
+        parts.append(_plural(counts["shiny_legendary"], "Shiny Legendary",
+                             "Shiny Legendaries"))
+    elif counts["shiny"]:
+        parts.append(_plural(counts["shiny"], "Shiny", "Shinies"))
+    if counts["legendary"]:
+        parts.append(_plural(counts["legendary"], "Legendary", "Legendaries"))
+    if counts["mythical"]:
+        parts.append(_plural(counts["mythical"], "Mythical", "Mythicals"))
+    if counts["hundo"]:
+        parts.append(_plural(counts["hundo"], "Hundo", "Hundos"))
+    if not parts:
+        return ""
+    return "⚡ " + " · ".join(parts) + " ⚡"
+
+
+def _plural(count: int, singular: str, plural: str) -> str:
+    return f"{count} {singular}" if count == 1 else f"{count} {plural}"
 
 
 def _descriptor(entry) -> str:
@@ -211,17 +251,25 @@ def eldorado_description(
 
     if narrative and narrative.strip():
         return Description(
-            ELDORADO, "Eldorado Listing", narrative.strip() + "\n\n" + VALUATION_NOTICE,
-            "gemini", listing_title=title,
+            ELDORADO, "Eldorado Listing", narrative.strip(),
+            "gemini", listing_title=title, notice=VALUATION_NOTICE,
         )
 
     facts = scan.facts
-    lines = ["Pokémon GO Account", ""]
+    counts = scan.counts()
+    emoji = _class_emoji(classification)
+    lines: list[str] = []
 
-    header = f"{classification.account_class.value} account"
+    header = f"{emoji} Pokémon GO Account · {classification.account_class.value} ACCOUNT"
+    if facts.level is not None:
+        header += f" · LEVEL {facts.level}"
     if facts.team:
-        header += f" · {facts.team} team"
-    lines.append(header + ".")
+        header += f" · {facts.team.upper()}"
+    lines.append(header)
+
+    lead = _lead_line(counts)
+    if lead:
+        lines.append(lead)
 
     account = _account_lines(scan)
     if account:
@@ -250,9 +298,8 @@ def eldorado_description(
         else:
             lines.append("Collection details were not visible in the supplied screenshots.")
 
-    lines.append("")
-    lines.append(VALUATION_NOTICE)
-    return Description(ELDORADO, "Eldorado Listing", "\n".join(lines), listing_title=title)
+    return Description(ELDORADO, "Eldorado Listing", "\n".join(lines),
+                       listing_title=title, notice=VALUATION_NOTICE)
 
 
 def auction_description(
@@ -267,8 +314,8 @@ def auction_description(
 
     if narrative and narrative.strip():
         return Description(
-            AUCTION, "Auction Lot Notes", narrative.strip() + "\n\n" + VALUATION_NOTICE,
-            "gemini", listing_title=title,
+            AUCTION, "Auction Lot Notes", narrative.strip(),
+            "gemini", listing_title=title, notice=VALUATION_NOTICE,
         )
 
     facts = scan.facts
@@ -316,9 +363,8 @@ def auction_description(
         lines.append("- Unreadable or unclear: " + "; ".join(scan.warnings[:3]))
     lines.append(f"- Signals not visible: "
                  f"{', '.join(classification.to_dict()['missing_signals']) or 'none'}")
-    lines.append("")
-    lines.append(VALUATION_NOTICE)
-    return Description(AUCTION, "Auction Lot Notes", "\n".join(lines), listing_title=title)
+    return Description(AUCTION, "Auction Lot Notes", "\n".join(lines),
+                       listing_title=title, notice=VALUATION_NOTICE)
 
 
 def build_description(
