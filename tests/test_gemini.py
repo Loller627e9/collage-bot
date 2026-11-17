@@ -175,3 +175,50 @@ class TestErrorHandling:
                               transport="interactions")
         with pytest.raises(GeminiError):
             client.generate("prompt")
+
+
+class TestTimeoutHandling:
+    """A stalled read must surface as a GeminiError, never a bare TimeoutError.
+
+    urllib only wraps the send phase in URLError; a stall while reading the
+    response raises TimeoutError, which is not a URLError. Before this was
+    handled it escaped generate() and aborted the whole investigation.
+    """
+
+    def test_read_timeout_becomes_gemini_error(self, mock_gemini):
+        server = mock_gemini({"facts": {}, "pokemon": []}, narrative_delay=2.0)
+        client = GeminiClient("test-key", base_url=server.base_url,
+                              transport="interactions", timeout=0.3,
+                              max_attempts=1, retry_backoff=0)
+        with pytest.raises(GeminiError):
+            client.generate("prompt")
+
+    def test_read_timeout_is_not_a_bare_timeout_error(self, mock_gemini):
+        from pokego.gemini import GeminiTimeoutError
+        server = mock_gemini({"facts": {}, "pokemon": []}, narrative_delay=2.0)
+        client = GeminiClient("test-key", base_url=server.base_url,
+                              transport="interactions", timeout=0.3,
+                              max_attempts=1, retry_backoff=0)
+        with pytest.raises(GeminiTimeoutError):
+            client.generate("prompt")
+
+    def test_timeout_is_retried_then_gives_up(self, mock_gemini):
+        from pokego.gemini import GeminiTimeoutError
+        server = mock_gemini({"facts": {}, "pokemon": []}, narrative_delay=2.0)
+        client = GeminiClient("test-key", base_url=server.base_url,
+                              transport="interactions", timeout=0.3,
+                              max_attempts=2, retry_backoff=0)
+        with pytest.raises(GeminiTimeoutError):
+            client.generate("prompt")
+        assert len(server.requests) == 2
+
+    def test_timeout_does_not_walk_every_model(self, mock_gemini):
+        """One dead endpoint must not be probed once per model."""
+        from pokego.gemini import GeminiTimeoutError
+        server = mock_gemini({"facts": {}, "pokemon": []}, narrative_delay=2.0)
+        client = GeminiClient("test-key", base_url=server.base_url,
+                              transport="interactions", timeout=0.3,
+                              max_attempts=1, retry_backoff=0)
+        with pytest.raises(GeminiTimeoutError):
+            client.generate("prompt")
+        assert len(server.requests) == 1

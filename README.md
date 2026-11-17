@@ -159,7 +159,7 @@ pokego/
   gemini.py            API client (interactions + generateContent, fallback)
   prompts.py           Scanner and Writer prompts
   pipeline.py          orchestration
-tests/                 171 tests, no network or API key required
+tests/                 177 tests, no network or API key required
 ```
 
 ---
@@ -191,7 +191,7 @@ variables win, and blank values are ignored.
 python -m pytest
 ```
 
-171 tests cover de-duplication, the classification rules (including the
+177 tests cover de-duplication, the classification rules (including the
 level-only and missing-is-not-zero guards), rarity, report structure, the numeric
 guard, both description types, both Gemini transports against a mock server, the
 pipeline end to end, and the bot wiring. No network or API key is needed.
@@ -217,6 +217,13 @@ dependency style — no SDK required. Both the `interactions` and `generateConte
 endpoints are supported with automatic fallback, because Google is mid-migration
 between them. `gemini-2.5-flash` is deprecated for new API users, so the fallback
 list starts at `gemini-3.8-flash`.
+
+A stalled request is retried, then reported as a warning rather than raised. Only
+the scan is essential: if the narrative call times out, the scan, report and both
+descriptions are still delivered from the deterministic path. This matters because
+`urllib` wraps only the send phase in `URLError` — a stall while reading the
+response raises `TimeoutError`, which is not a `URLError` and would otherwise
+escape the client and abort the whole investigation.
 
 The rarity dataset in `pokego/rarity.py` is a curated snapshot of documented
 species classes, not a live database. It is plain data: correct or extend it
