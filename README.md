@@ -159,7 +159,7 @@ pokego/
   gemini.py            API client (interactions + generateContent, fallback)
   prompts.py           Scanner and Writer prompts
   pipeline.py          orchestration
-tests/                 177 tests, no network or API key required
+tests/                 179 tests, no network or API key required
 ```
 
 ---
@@ -191,7 +191,7 @@ variables win, and blank values are ignored.
 python -m pytest
 ```
 
-177 tests cover de-duplication, the classification rules (including the
+179 tests cover de-duplication, the classification rules (including the
 level-only and missing-is-not-zero guards), rarity, report structure, the numeric
 guard, both description types, both Gemini transports against a mock server, the
 pipeline end to end, and the bot wiring. No network or API key is needed.

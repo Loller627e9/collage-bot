@@ -6,6 +6,10 @@ network calls are made.
 
 from __future__ import annotations
 
+import asyncio
+import gc
+import warnings
+
 import pytest
 
 import bot
@@ -175,3 +179,62 @@ class TestReportDelivery:
 
     def test_report_filename_is_markdown(self):
         assert bot.REPORT_FILENAME.endswith(".md")
+
+
+class _FakeApplication:
+    """Mirrors Application.create_task, which wraps our coroutine in a callback."""
+
+    def create_task(self, coro, **kwargs):
+        async def wrapper():
+            return await coro
+        return asyncio.create_task(wrapper())
+
+
+class TestDebounceTimer:
+    """A cancelled timer must not leave an un-awaited coroutine behind.
+
+    Application.create_task awaits our coroutine inside its own callback. When
+    the timer is cancelled before its first step (a second image arriving within
+    AUTO_BUILD_SEC), that await never happens and Python warns at GC.
+    """
+
+    def test_cancelling_before_first_step_does_not_orphan_the_coroutine(self):
+        async def run():
+            app = _FakeApplication()
+            s = bot.Session()
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                s.timer = bot._schedule_timer(app, 1, 999, s)
+                s.timer.cancel()
+                s.timer = None
+                gc.collect()
+                await asyncio.sleep(0.05)
+                gc.collect()
+                return [w for w in caught if "never awaited" in str(w.message)]
+
+        assert asyncio.run(run()) == []
+
+    def test_helper_returns_a_task_and_still_builds_when_it_elapses(self):
+        """The debounce must still fire; the done-callback must not break it."""
+        calls: list = []
+
+        async def fake_try_launch(app, chat_id, uid, s):
+            calls.append((chat_id, uid))
+
+        original = bot.try_launch
+        original_sec = bot.AUTO_BUILD_SEC
+        bot.try_launch = fake_try_launch
+        bot.AUTO_BUILD_SEC = 0.01
+        try:
+            async def run():
+                app = _FakeApplication()
+                s = bot.Session()
+                task = bot._schedule_timer(app, 7, 999, s)
+                assert isinstance(task, asyncio.Task)
+                await asyncio.wait_for(task, timeout=2)
+                return calls
+
+            assert asyncio.run(run()) == [(7, 999)]
+        finally:
+            bot.try_launch = original
+            bot.AUTO_BUILD_SEC = original_sec
