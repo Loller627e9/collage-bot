@@ -42,6 +42,15 @@ class GeminiError(RuntimeError):
     pass
 
 
+class GeminiTimeoutError(GeminiError):
+    """A transport-level timeout or connection failure.
+
+    It is a ``GeminiError`` so callers degrade it to a warning, and it is a
+    distinct type so the retry loop can avoid re-trying every model against an
+    endpoint that is simply not answering.
+    """
+
+
 class MissingApiKeyError(GeminiError):
     pass
 
@@ -124,12 +133,16 @@ class GeminiClient:
         base_url: str | None = None,
         transport: str = "auto",
         timeout: float = 120.0,
+        max_attempts: int = 2,
+        retry_backoff: float = 1.5,
     ):
         self.api_key = api_key
         self.model = model
         self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
         self.transport = (transport or "auto").lower()
         self.timeout = timeout
+        self.max_attempts = max(1, int(max_attempts))
+        self.retry_backoff = max(0.0, float(retry_backoff))
 
     def _models(self) -> list[str]:
         models = [self.model] if self.model else []
@@ -155,18 +168,30 @@ class GeminiClient:
         errors: list[str] = []
         for model in self._models():
             for transport in self._transports():
-                try:
-                    return self._call(
-                        transport=transport, model=model, prompt=prompt,
-                        system_instruction=system_instruction, images=images,
-                        json_schema=json_schema, temperature=temperature,
-                    )
-                except GeminiError as exc:
-                    errors.append(f"{transport}/{model}: {exc}")
-                    if "404" in str(exc) or "not found" in str(exc).lower():
-                        break  # model is gone; try the next one
-                except urllib.error.URLError as exc:
-                    errors.append(f"{transport}/{model}: network error {exc}")
+                for attempt in range(self.max_attempts):
+                    try:
+                        return self._call(
+                            transport=transport, model=model, prompt=prompt,
+                            system_instruction=system_instruction, images=images,
+                            json_schema=json_schema, temperature=temperature,
+                        )
+                    except GeminiTimeoutError as exc:
+                        errors.append(f"{transport}/{model}: {exc}")
+                        if attempt + 1 < self.max_attempts:
+                            time.sleep(self.retry_backoff * (attempt + 1))
+                            continue
+                        # The endpoint is not answering. Walking the remaining
+                        # models would multiply the wait by their count, so give
+                        # up now and let the caller use its deterministic path.
+                        raise GeminiTimeoutError(
+                            f"Gemini timed out after {self.max_attempts} attempt(s) "
+                            f"on {transport}/{model}: {exc}"
+                        ) from exc
+                    except GeminiError as exc:
+                        errors.append(f"{transport}/{model}: {exc}")
+                        if "404" in str(exc) or "not found" in str(exc).lower():
+                            break  # model is gone; try the next one
+                        # Any other error falls through to the next transport.
         raise GeminiError("All Gemini attempts failed:\n  " + "\n  ".join(errors))
 
     def _call(self, *, transport: str, **kwargs: Any) -> GeminiResponse:
@@ -241,6 +266,10 @@ class GeminiClient:
             raise GeminiError(f"HTTP {exc.code} from Gemini: {_short_text(detail)}") from exc
         except json.JSONDecodeError as exc:
             raise GeminiError(f"Non-JSON response from Gemini: {exc}") from exc
+        except (TimeoutError, urllib.error.URLError, OSError) as exc:
+            # urllib only wraps the send phase in URLError; a stall while reading
+            # the response surfaces as a bare TimeoutError. Normalise both.
+            raise GeminiTimeoutError(f"Gemini request failed: {exc}") from exc
 
 
 def _to_gemini_schema(schema: dict[str, Any]) -> dict[str, Any]:

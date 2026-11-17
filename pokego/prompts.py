@@ -269,21 +269,35 @@ supplied evidence.
 
 For any value that is not visible, write "Not visible" - never write 0."""
 
-ELDORADO_PROMPT = """Write an "Eldorado" style account description.
+ELDORADO_PROMPT = """Write an "Eldorado" style marketplace listing for a Pokémon GO \
+account. This is the body of a real product listing on an account marketplace, \
+not an analysis and not a report.
 
-This is the showpiece listing description for a high-end account marketplace. \
-It is marketing copy, but it must stay strictly honest.
+Format to follow, in this order:
+1. A one-line header: the account class and the trainer level, for example \
+"STACKED account — LEVEL 62."
+2. A flat inventory: one count per line, in the style real listings use. \
+For example "286 Legendary Pokémon", "138 Shiny Pokémon", "21 Perfect IV \
+(100% IV)", "11 Shiny Legendary Pokémon", "37,300,000 Stardust 🌠". Write only \
+the counts the facts support, and omit any category that has no count.
+3. The headline pieces, one per line, in seller style: "3× Shiny Zacian ✨", \
+"Shiny Mewtwo ✨", "Shundo Mewtwo ✨". Use the exact species, counts and \
+attributes from the facts.
+4. Account lines a buyer asks about: storage, XP, Pokédex, team, medals - only \
+those present in the facts.
 
 Rules:
-- Lead with the account class and the single strongest asset.
-- Highlight the genuinely rare pieces: shiny legendaries and mythicals, shundos, \
-rare event and costume Pokémon, special backgrounds, legacy moves.
-- Use vivid, confident language, but every claim must trace to the supplied facts.
-- Do NOT invent numbers, do NOT invent prices, and do NOT promise anything the \
-facts do not support.
-- If the account is not high-end, write an honest description of what it is \
-rather than overselling it.
-- End with a short honest note that the description reflects the supplied \
+- This is sales copy, so write it confidently and keep it easy to scan. Short \
+lines, not paragraphs.
+- Every number and species must come from the facts you are given. Do not add a \
+count, a species or an attribute that is not there.
+- Do not write an evidence section, a confidence rating, a rarity table or any \
+"verified / not visible" audit language. Those belong in the report, not the \
+listing.
+- Do not invent a price and do not state or imply a monetary value.
+- If the account is not high-end, write an honest listing of what it actually \
+holds rather than overselling it.
+- End with one short line noting the description reflects the supplied \
 screenshots only.
 
 Facts:
@@ -304,21 +318,27 @@ Rarity table:
 {rarity_json}
 ```"""
 
-AUCTION_PROMPT = """Write an "Auction" style account description.
+AUCTION_PROMPT = """Write an "Auction" style lot description for a Pokémon GO \
+account. It must read like an auctioneer's lot notes: precise, itemised, easy to \
+scan. This is a listing, not an analysis.
 
-This is the lot description for an account auction. It must read like an \
-auctioneer's factual lot notes: precise, itemised, easy to scan.
+Format to follow, in this order:
+1. Open with "LOT: Pokémon GO account — <class>" and a one-line summary.
+2. A short bulleted "LOT HIGHLIGHTS" list of the standout items, each with its \
+verified attributes, for example "- Mewtwo — CP 4,700, 100% IV, Special \
+background".
+3. "PROGRESSION" lines: trainer level, Pokédex caught, Pokémon caught.
+4. "RESOURCES" lines: Stardust, PokéCoins, Rare Candy, Rare Candy XL.
+5. "COLLECTION TOTALS" as a compact line of counts.
 
 Rules:
-- Open with the account class and a one-line summary.
-- Use a short bulleted "LOT HIGHLIGHTS" list of the standout items, each with its \
-verified attributes.
-- Follow with "PROGRESSION" and "RESOURCES" lines drawn only from the facts.
-- Include an "EVIDENCE" line stating what was verified and what was not visible.
-- Do NOT invent numbers, do NOT set a price, and do NOT estimate value in \
-currency. State plainly that no price is estimated.
+- Use only the numbers and species in the facts. Do not add a count, a species \
+or an attribute that is not there.
+- Do not invent a price, and do not estimate value in currency. State plainly \
+that no price is estimated.
 - Note that account trading is restricted by the game's terms and that the \
 description reflects the supplied screenshots only.
+- Keep the bullets terse. No paragraphs.
 
 Facts:
 

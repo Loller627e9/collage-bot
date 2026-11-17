@@ -245,6 +245,8 @@ def numeric_claims_not_in_scan(narrative: str, scan: AccountScan) -> list[str]:
             allowed.add(int(value))
     allowed.update(int(v) for v in scan.counts().values())
     allowed.update(int(p.cp) for p in scan.pokemon if p.cp is not None)
+    # IV percentages are real scan facts ("100% IV"), so they are supported too.
+    allowed.update(int(p.iv_percent) for p in scan.pokemon if p.iv_percent is not None)
 
     flags: list[str] = []
     for match in _NUMBER_RE.finditer(narrative):

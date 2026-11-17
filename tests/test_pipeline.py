@@ -125,6 +125,42 @@ class TestFailureHandling:
         assert result.descriptions
 
 
+class TestWriterTimeout:
+    """A stalled writer call must not lose the scan that already succeeded.
+
+    This reproduces the reported crash: the writer (report narrative) read timed
+    out, the raw TimeoutError escaped as a GeminiError, and the whole
+    investigation failed even though the scan had completed.
+    """
+
+    def test_stalled_writer_still_returns_scan_report_and_descriptions(self, mock_gemini):
+        server = mock_gemini(SCAN_PAYLOAD, narrative_delay=2.0)
+        client = GeminiClient("test-key", base_url=server.base_url,
+                              transport="interactions", timeout=0.3,
+                              max_attempts=1, retry_backoff=0)
+        result = investigate([ImagePart.from_bytes(b"img")], client)
+
+        # The scan is intact, not thrown away.
+        assert result.scan.facts.level == 58
+        assert result.scan.counts()["total_identified"] == 6
+        assert result.classification.account_class is AccountClass.STACKED
+        # The report and both descriptions fall back to the deterministic path.
+        assert "ACCOUNT CLASSIFICATION: STACKED" in result.report.markdown
+        assert set(result.descriptions) == {ELDORADO, AUCTION}
+        assert result.report.narrative_source == "deterministic"
+        for desc in result.descriptions.values():
+            assert desc.source == "deterministic"
+            assert desc.body.strip()
+
+    def test_stalled_writer_is_reported_as_a_warning(self, mock_gemini):
+        server = mock_gemini(SCAN_PAYLOAD, narrative_delay=2.0)
+        client = GeminiClient("test-key", base_url=server.base_url,
+                              transport="interactions", timeout=0.3,
+                              max_attempts=1, retry_backoff=0)
+        result = investigate([ImagePart.from_bytes(b"img")], client)
+        assert any("timed out" in w.lower() for w in result.warnings)
+
+
 class TestScanOnly:
     def test_returns_a_scan_without_judgements(self, mock_gemini):
         server = mock_gemini(SCAN_PAYLOAD)

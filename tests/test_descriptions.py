@@ -14,6 +14,7 @@ from pokego.descriptions import (
 )
 from pokego.rarity import assess_collection
 from pokego.schema import Evidence
+from pokego.titles import listing_title
 
 from .conftest import make_scan
 
@@ -21,6 +22,10 @@ from .conftest import make_scan
 def _build(kind, scan, narrative=None):
     return build_description(kind, scan, assess_collection(scan.pokemon),
                              classify(scan), narrative=narrative)
+
+
+def _title(scan) -> str:
+    return listing_title(scan, assess_collection(scan.pokemon), classify(scan))
 
 
 class TestTypes:
@@ -37,13 +42,34 @@ class TestTypes:
 
 
 class TestEldorado:
-    def test_leads_with_classification_and_headline_asset(self, stacked_scan):
+    def test_reads_as_a_listing_not_an_audit(self, stacked_scan):
         body = _build(ELDORADO, stacked_scan).body
         assert "STACKED" in body
-        assert "Headline asset" in body
+        assert "Pokémon GO Account" in body
+        # Audit scaffolding belongs in the report, never in the listing.
+        for audit in ("Classification evidence:", "EVIDENCE", "Confidence:"):
+            assert audit not in body
 
     def test_uses_vivid_but_honest_language(self, stacked_scan):
         assert "Eldorado" in _build(ELDORADO, stacked_scan).title
+
+    def test_carries_a_keyword_listing_title(self, stacked_scan):
+        desc = _build(ELDORADO, stacked_scan)
+        assert desc.listing_title
+        assert "LEVEL 62" in desc.listing_title
+        assert "STACKED" in desc.listing_title
+        assert len(desc.listing_title) <= 120
+
+    def test_flat_inventory_lines(self, stacked_scan):
+        body = _build(ELDORADO, stacked_scan).body
+        assert "3 Legendary Pokémon" in body
+        assert "4 Shiny Pokémon" in body
+        assert "1 Perfect IV (100% IV)" in body
+
+    def test_headline_pieces_are_named(self, stacked_scan):
+        body = _build(ELDORADO, stacked_scan).body
+        assert "Shundo Mewtwo" in body
+        assert "Shiny Mew" in body
 
     def test_weak_account_is_not_oversold(self, mini_scan):
         body = _build(ELDORADO, mini_scan).body
@@ -112,7 +138,7 @@ class TestSharedGuarantees:
 
     def test_to_dict_roundtrip(self, stacked_scan):
         data = _build(ELDORADO, stacked_scan).to_dict()
-        assert set(data) == {"kind", "title", "body", "source"}
+        assert set(data) == {"kind", "title", "body", "source", "listing_title"}
 
 
 class TestNumberFormatting:
@@ -131,8 +157,42 @@ class TestNumberFormatting:
         body = _build(AUCTION, scan).body
         assert "Stardust: not visible" in body
 
-    def test_eldorado_evidence_is_one_bullet_per_reason(self, stacked_scan):
-        body = _build(ELDORADO, stacked_scan).body
-        section = body.split("Classification evidence:")[1].split("\n\n")[0]
-        bullets = [line for line in section.splitlines() if line.startswith("- ")]
-        assert len(bullets) >= 2
+
+class TestListingTitles:
+    """The title is the most-read line, so it is built from facts, not prose."""
+
+    def test_title_only_uses_visible_facts(self):
+        scan = make_scan([], evidence=Evidence.NOT_VISIBLE)
+        title = _title(scan)
+        assert "LEVEL" not in title
+        assert "SHINY" not in title
+        assert "DUST" not in title
+
+    def test_title_omits_categories_with_no_evidence(self, mini_scan):
+        title = _title(mini_scan)
+        assert "SHINY" not in title
+        assert "LEG" not in title
+
+    def test_title_is_capped(self, stacked_scan):
+        assert len(_title(stacked_scan)) <= 120
+
+    def test_shiny_legendary_is_reported_separately(self, stacked_scan):
+        title = _title(stacked_scan)
+        assert "2 SHINY LEG" in title
+
+    def test_dust_is_abbreviated(self, stacked_scan):
+        assert "28M DUST" in _title(stacked_scan)
+
+    def test_title_never_contains_a_price(self, stacked_scan):
+        assert "$" not in _title(stacked_scan)
+
+    def test_title_always_names_the_class(self, mini_scan):
+        assert "MINI" in _title(mini_scan)
+
+    def test_sparse_scan_still_gets_a_title(self):
+        scan = make_scan([], evidence=Evidence.NOT_VISIBLE)
+        assert _title(scan).strip()
+
+    def test_title_has_no_duplicate_segments(self, stacked_scan):
+        segments = [s.strip() for s in _title(stacked_scan).split("|")[1:]]
+        assert len(segments) == len(set(segments))

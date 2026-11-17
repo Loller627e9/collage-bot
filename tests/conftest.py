@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
@@ -52,6 +53,16 @@ def mini_scan() -> AccountScan:
     )
 
 
+class _MockServer(ThreadingHTTPServer):
+    """Threaded so a stalled handler does not block later requests, and
+    daemonic so teardown does not wait on a deliberately stalled request."""
+
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):  # noqa: D102 - keep output clean
+        pass
+
+
 class _MockGemini:
     """A tiny stand-in for the Gemini HTTP API.
 
@@ -59,11 +70,13 @@ class _MockGemini:
     scan JSON, anything else gets the narrative text.
     """
 
-    def __init__(self, scan: dict, narrative: str = "FINAL DESCRIPTION\nMock narrative."):
+    def __init__(self, scan: dict, narrative: str = "FINAL DESCRIPTION\nMock narrative.",
+                 narrative_delay: float = 0.0):
         self.scan = scan
         self.narrative = narrative
+        self.narrative_delay = narrative_delay
         self.requests: list[dict] = []
-        self._server: HTTPServer | None = None
+        self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
     @property
@@ -85,16 +98,25 @@ class _MockGemini:
                 has_image = any(
                     part.get("type") == "image" for part in body.get("input", [])
                 )
+                if not has_image and outer.narrative_delay:
+                    # Stall the writer call so a read timeout can be exercised.
+                    time.sleep(outer.narrative_delay)
                 text = json.dumps(outer.scan) if has_image else outer.narrative
                 payload = json.dumps({"output_text": text}).encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                except (BrokenPipeError, ConnectionResetError):
+                    # Expected when the client gave up on a stalled request.
+                    pass
 
-        self._server = HTTPServer(("127.0.0.1", 0), Handler)
-        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._server = _MockServer(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(
+            target=self._server.serve_forever, kwargs={"poll_interval": 0.02},
+            daemon=True)
         self._thread.start()
         return self
 
@@ -108,8 +130,9 @@ class _MockGemini:
 def mock_gemini():
     servers: list[_MockGemini] = []
 
-    def factory(scan: dict, narrative: str = "FINAL DESCRIPTION\nMock narrative."):
-        server = _MockGemini(scan, narrative).start()
+    def factory(scan: dict, narrative: str = "FINAL DESCRIPTION\nMock narrative.",
+                narrative_delay: float = 0.0):
+        server = _MockGemini(scan, narrative, narrative_delay).start()
         servers.append(server)
         return server
 
