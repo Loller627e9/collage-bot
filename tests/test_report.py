@@ -77,6 +77,10 @@ class TestNumericGuard:
         shiny = stacked_scan.counts()["shiny"]
         assert numeric_claims_not_in_scan(f"{shiny} shiny identified.", stacked_scan) == []
 
+    def test_accepts_iv_percentages_from_the_scan(self, stacked_scan):
+        """A listing writes '100% IV'; that is a real scan fact, not an invention."""
+        assert numeric_claims_not_in_scan("1 Perfect IV (100% IV)", stacked_scan) == []
+
     def test_ignores_small_numbers_like_level_caps(self, stacked_scan):
         assert numeric_claims_not_in_scan("Level 5 account, 3 medals.", stacked_scan) == []
 

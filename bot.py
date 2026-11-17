@@ -818,14 +818,17 @@ async def run_investigation(
 
         for kind, desc in result.descriptions.items():
             label = DESC_LABELS.get(kind, kind.title())
-            text = f"📝 {label} description\n\n{desc.body}"
+            head = f"📝 {label} description"
+            if desc.listing_title:
+                head += f"\n🏷 {desc.listing_title}"
+            text = f"{head}\n\n{desc.body}"
             if len(text) <= TELEGRAM_MSG_LIMIT:
                 await _say(bot, chat_id, text)
             else:
                 doc = io.BytesIO(text.encode("utf-8"))
                 await bot.send_document(
                     chat_id, doc, filename=f"pokemon-go-{kind}-description.md",
-                    caption=f"📝 {label} description", protect_content=PROTECT_CONTENT,
+                    caption=head[:1000], protect_content=PROTECT_CONTENT,
                     write_timeout=120,
                 )
                 doc.close()

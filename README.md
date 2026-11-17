@@ -10,7 +10,8 @@ Two features, one bot:
    aspect ratio, nothing is cropped or stretched.
 2. **Account investigation** — send account screenshots, send `/analyze`, and get a
    classification, an evidence-labelled report, and a description in one of two
-   styles: **Eldorado** (showpiece listing) or **Auction** (itemised lot notes).
+   styles: **Eldorado** (marketplace listing with a keyword title) or
+   **Auction** (itemised lot notes).
 
 ---
 
@@ -125,10 +126,18 @@ matching the spec's own definition.
 
 Two styles, both generated from the same verified facts:
 
-- **Eldorado** — showpiece listing copy. Vivid, but bounded by the facts. A weak
+- **Eldorado** — marketplace listing copy in the house style of that marketplace.
+  It leads with a keyword listing title (`👑 STACKED | LEVEL 62 | MYSTIC |
+  28M DUST | SHUNDO MEWTWO | 1 SHINY LEG | 2 LEG`), then a flat inventory of
+  what the account holds, then the named headline pieces, then resources. A weak
   account is described honestly rather than oversold.
 - **Auction** — itemised lot notes: `LOT HIGHLIGHTS`, `PROGRESSION`, `RESOURCES`,
-  `EVIDENCE`.
+  `COLLECTION TOTALS`, `EVIDENCE`.
+
+The listing title is built from the verified facts, not written by the model, so
+it cannot gain a number the screenshots do not support. Every segment is dropped
+when its fact is not visible, so a sparse scan yields a shorter title rather than
+a padded one.
 
 Both carry the same notice: no price is estimated, the description reflects the
 supplied screenshots only, and account trading is restricted by the game's terms.
@@ -145,11 +154,12 @@ pokego/
   classification.py    deterministic MINI / MID / STACKED
   rarity.py            curated species data + rarity rules
   report.py            report tables + numeric guard
-  descriptions.py      Eldorado and Auction
+  descriptions.py      Eldorado and Auction listings
+  titles.py            deterministic listing titles
   gemini.py            API client (interactions + generateContent, fallback)
   prompts.py           Scanner and Writer prompts
   pipeline.py          orchestration
-tests/                 159 tests, no network or API key required
+tests/                 171 tests, no network or API key required
 ```
 
 ---
@@ -181,7 +191,7 @@ variables win, and blank values are ignored.
 python -m pytest
 ```
 
-159 tests cover de-duplication, the classification rules (including the
+171 tests cover de-duplication, the classification rules (including the
 level-only and missing-is-not-zero guards), rarity, report structure, the numeric
 guard, both description types, both Gemini transports against a mock server, the
 pipeline end to end, and the bot wiring. No network or API key is needed.
