@@ -294,11 +294,11 @@ count, a species or an attribute that is not there.
 - Do not write an evidence section, a confidence rating, a rarity table or any \
 "verified / not visible" audit language. Those belong in the report, not the \
 listing.
-- Do not invent a price and do not state or imply a monetary value.
+- Do not invent a price and do not state or imply a monetary value. Do not add a \
+disclaimer, a legal note or a closing line about screenshots - the copy is \
+pasted straight into a listing, so it ends on the last selling line.
 - If the account is not high-end, write an honest listing of what it actually \
 holds rather than overselling it.
-- End with one short line noting the description reflects the supplied \
-screenshots only.
 
 Facts:
 

@@ -791,8 +791,13 @@ def _describe_types_label() -> str:
 async def run_investigation(
     bot, chat_id: int, items: list, *,
     description: str | None = None, with_report: bool = True,
+    listing_only: bool = False,
 ) -> None:
-    """Scan the queued screenshots and reply with the report and/or a description."""
+    """Scan the queued screenshots and reply with the report and/or a description.
+
+    ``listing_only`` sends just the title and the copy, with no classification,
+    no confidence and no report, so it can be pasted straight into a listing.
+    """
     status = await _say(bot, chat_id, "🔎 Reading your screenshots…")
     try:
         parts, skipped = await _fetch_parts(bot, items)
@@ -813,6 +818,15 @@ async def run_investigation(
         # Drop the pixel buffers as soon as the scan is done.
         parts = None
         trim_memory()
+
+        if listing_only:
+            await _send_listing(bot, chat_id, result)
+            if status:
+                try:
+                    await status.delete()
+                except TelegramError:
+                    pass
+            return
 
         cls = result.classification
         header = (f"🏷 Account classification: {cls.account_class.value}\n"
@@ -836,7 +850,11 @@ async def run_investigation(
             head = f"📝 {label} description"
             if desc.listing_title:
                 head += f"\n🏷 {desc.listing_title}"
+            # /analyze is the audit path, so the notice stays visible here; the
+            # copy above it is still exactly what goes into a listing.
             text = f"{head}\n\n{desc.body}"
+            if desc.notice:
+                text += f"\n\n{desc.notice}"
             if len(text) <= TELEGRAM_MSG_LIMIT:
                 await _say(bot, chat_id, text)
             else:
@@ -873,7 +891,38 @@ async def run_investigation(
         trim_memory()
 
 
-async def cmd_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def _send_listing(bot, chat_id: int, result) -> None:
+    """Send the title and copy only, ready to paste into a marketplace listing."""
+    wanted = (ELDORADO, AUCTION)
+    ordered = [(k, result.descriptions[k]) for k in wanted if k in result.descriptions]
+    ordered += [(k, d) for k, d in result.descriptions.items()
+                if k not in wanted]
+    if not ordered:
+        await _say(bot, chat_id, "❌ No listing could be written from those screenshots.")
+        return
+
+    for kind, desc in ordered:
+        blocks = [f"🏷 {desc.listing_title}"] if desc.listing_title else []
+        blocks.append(desc.body.strip())
+        text = "\n\n".join(blocks)
+        if len(ordered) > 1:  # tell the two styles apart; with one, keep it copy-clean
+            text = f"{DESC_LABELS.get(kind, kind.title())}\n\n" + text
+        if len(text) <= TELEGRAM_MSG_LIMIT:
+            await _say(bot, chat_id, text)
+        else:
+            doc = io.BytesIO(desc.paste_text.encode("utf-8"))
+            await bot.send_document(
+                chat_id, doc, filename=f"pokemon-go-{kind}-listing.txt",
+                caption=desc.listing_title[:1000], protect_content=PROTECT_CONTENT,
+                write_timeout=120,
+            )
+            doc.close()
+
+
+async def _start_investigation(update: Update, context: ContextTypes.DEFAULT_TYPE, *,
+                               with_report: bool, listing_only: bool = False,
+                               hint: str = "then send /analyze") -> None:
+    """Shared launch path for /analyze and /listing."""
     uid = update.effective_user.id
     if not investigation_available():
         await update.message.reply_text("⚠️ " + _unavailable_reason())
@@ -883,7 +932,7 @@ async def cmd_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not items:
         await update.message.reply_text(
             "Send the account screenshots first (profile, storage, Pokédex, medals), "
-            "then send /analyze.")
+            f"{hint}.")
         return
     if uid in ACTIVE:
         await update.message.reply_text("⏳ Still working on your last request. "
@@ -897,14 +946,26 @@ async def cmd_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     description = None if selected == "both" else selected
     context.application.create_task(
         _finish_analysis(context.application, update.effective_chat.id, uid, items,
-                         description, True))
+                         description, with_report, listing_only))
+
+
+async def cmd_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _start_investigation(update, context, with_report=True)
+
+
+async def cmd_listing(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Title and description only — no report, no confidence, ready to paste."""
+    await _start_investigation(update, context, with_report=False, listing_only=True,
+                               hint="then send /listing")
 
 
 async def _finish_analysis(app: Application, chat_id: int, uid: int, items: list,
-                           description: str | None, with_report: bool) -> None:
+                           description: str | None, with_report: bool,
+                           listing_only: bool = False) -> None:
     try:
         await run_investigation(app.bot, chat_id, items,
-                                description=description, with_report=with_report)
+                                description=description, with_report=with_report,
+                                listing_only=listing_only)
     finally:
         ACTIVE.discard(uid)
         trim_memory()
@@ -976,6 +1037,7 @@ def welcome() -> str:
             "Send account screenshots (profile, storage, Pokédex, medals), then /analyze.\n"
             "You get a MINI / MID / STACKED classification, an evidence-labelled report, "
             "and a description.\n"
+            "/listing — just the title and description, ready to paste into a listing\n"
             "/desc — choose Eldorado or Auction description style\n"
             "Classification and rarity are decided by rules, not by the AI; the AI only "
             "reads your screenshots and writes the wording."
@@ -1347,7 +1409,8 @@ async def post_init(app: Application) -> None:
     ]
     if INVESTIGATOR:
         commands.insert(6, BotCommand("analyze", "Classify account from screenshots"))
-        commands.insert(7, BotCommand("desc", "Eldorado or Auction description"))
+        commands.insert(7, BotCommand("listing", "Title + description, ready to paste"))
+        commands.insert(8, BotCommand("desc", "Eldorado or Auction description"))
     await app.bot.set_my_commands(commands)
 
 
@@ -1413,7 +1476,7 @@ def main() -> None:
                      ("layout", cmd_layout), ("watermark", cmd_watermark), ("quality", cmd_quality),
                      ("status", cmd_status), ("id", cmd_id)]
     if INVESTIGATOR:
-        user_commands += [("analyze", cmd_analyze), ("desc", cmd_desc)]
+        user_commands += [("analyze", cmd_analyze), ("listing", cmd_listing), ("desc", cmd_desc)]
     for names, fn in user_commands:
         app.add_handler(CommandHandler(names, fn))
     app.add_handler(CallbackQueryHandler(cb_layout, pattern=r"^layout:"))

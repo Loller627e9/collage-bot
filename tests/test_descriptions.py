@@ -103,18 +103,20 @@ class TestAuction:
         assert "VERIFIED" in body
 
     def test_states_no_price_is_estimated(self, stacked_scan):
-        body = _build(AUCTION, stacked_scan).body
-        assert "No price is estimated" in body
+        assert "No price is estimated" in _build(AUCTION, stacked_scan).notice
 
 
 class TestSharedGuarantees:
     def test_both_types_carry_the_valuation_notice(self, stacked_scan):
+        """The notice is a separate field, so it never lands in the pasted copy."""
         for kind in DESCRIPTION_TYPES:
-            assert VALUATION_NOTICE in _build(kind, stacked_scan).body
+            desc = _build(kind, stacked_scan)
+            assert VALUATION_NOTICE == desc.notice
+            assert VALUATION_NOTICE not in desc.body
 
     def test_notice_mentions_the_terms_of_service(self, stacked_scan):
         for kind in DESCRIPTION_TYPES:
-            assert "terms of service" in _build(kind, stacked_scan).body.lower()
+            assert "terms of service" in _build(kind, stacked_scan).notice.lower()
 
     def test_missing_values_render_as_not_visible_not_zero(self):
         scan = make_scan([], evidence=Evidence.NOT_VISIBLE)
@@ -126,7 +128,7 @@ class TestSharedGuarantees:
         desc = _build(ELDORADO, stacked_scan, narrative="A pristine veteran account.")
         assert "pristine veteran account" in desc.body
         assert desc.source == "gemini"
-        assert VALUATION_NOTICE in desc.body
+        assert desc.notice == VALUATION_NOTICE
 
     def test_deterministic_source_when_no_narrative(self, stacked_scan):
         assert _build(ELDORADO, stacked_scan).source == "deterministic"
@@ -138,7 +140,39 @@ class TestSharedGuarantees:
 
     def test_to_dict_roundtrip(self, stacked_scan):
         data = _build(ELDORADO, stacked_scan).to_dict()
-        assert set(data) == {"kind", "title", "body", "source", "listing_title"}
+        assert set(data) == {"kind", "title", "body", "source", "listing_title",
+                             "notice", "paste_text"}
+
+
+class TestPasteText:
+    """The paste text is what a seller copies into a listing: title then copy."""
+
+    def test_starts_with_the_listing_title(self, stacked_scan):
+        desc = _build(ELDORADO, stacked_scan)
+        assert desc.paste_text.startswith(desc.listing_title)
+
+    def test_contains_no_audit_language(self, stacked_scan):
+        text = _build(ELDORADO, stacked_scan).paste_text
+        for audit in ("Confidence", "EVIDENCE", "Classification evidence"):
+            assert audit not in text
+
+    def test_contains_no_valuation_notice(self, stacked_scan):
+        desc = _build(ELDORADO, stacked_scan)
+        assert "No price is estimated" not in desc.paste_text
+
+    def test_is_not_empty_without_a_title(self):
+        from pokego.descriptions import Description
+        assert Description(ELDORADO, "t", "Body copy.").paste_text == "Body copy."
+
+    def test_lead_line_names_only_visible_pieces(self, mini_scan):
+        text = _build(ELDORADO, mini_scan).paste_text
+        assert "⚡" not in text or "Shiny Legendary" not in text
+
+    def test_pluralises_correctly(self, stacked_scan):
+        """'2 Shiny Legendaries', never 'Shiny Legendarys'."""
+        text = _build(ELDORADO, stacked_scan).paste_text
+        assert "Legendarys" not in text
+        assert "Legendaries" in text
 
 
 class TestNumberFormatting:

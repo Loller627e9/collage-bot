@@ -11,7 +11,8 @@ Two features, one bot:
 2. **Account investigation** — send account screenshots, send `/analyze`, and get a
    classification, an evidence-labelled report, and a description in one of two
    styles: **Eldorado** (marketplace listing with a keyword title) or
-   **Auction** (itemised lot notes).
+   **Auction** (itemised lot notes). `/listing` returns just the title and the
+   description, ready to paste.
 
 ---
 
@@ -66,6 +67,7 @@ Send up to 20 images. The collage builds after 10 seconds of quiet, or on `/done
 | `/watermark` | Add or remove the watermark |
 | `/quality` | Set JPEG quality (1–95) |
 | `/analyze` | Classify the account and write the report |
+| `/listing` | Title + description only, ready to paste |
 | `/desc` | Choose Eldorado, Auction, or both |
 | `/status` | Current settings |
 | `/clear` | Reset the queue |
@@ -75,6 +77,11 @@ Send up to 20 images. The collage builds after 10 seconds of quiet, or on `/done
 **Investigation flow:** send the account screenshots (trainer profile, Pokémon
 storage, Pokédex, medals), pick a style with `/desc`, then `/analyze`. `/analyze`
 remembers your last batch, so it still works after the collage has auto-built.
+
+**Just want the listing?** Use `/listing` instead of `/analyze`. It sends the
+keyword title and the description and nothing else — no classification line, no
+confidence rating, no report — so you can paste it straight into a marketplace.
+The valuation notice is kept out of the copy for the same reason.
 
 ---
 
@@ -139,6 +146,10 @@ it cannot gain a number the screenshots do not support. Every segment is dropped
 when its fact is not visible, so a sparse scan yields a shorter title rather than
 a padded one.
 
+The "no price is estimated" notice is held in a separate `notice` field rather
+than appended to the copy, so a pasted listing ends on a selling line. `/analyze`
+still shows it under the description; `/listing` omits it.
+
 Both carry the same notice: no price is estimated, the description reflects the
 supplied screenshots only, and account trading is restricted by the game's terms.
 
@@ -159,7 +170,7 @@ pokego/
   gemini.py            API client (interactions + generateContent, fallback)
   prompts.py           Scanner and Writer prompts
   pipeline.py          orchestration
-tests/                 179 tests, no network or API key required
+tests/                 192 tests, no network or API key required
 ```
 
 ---
@@ -175,7 +186,7 @@ variables win, and blank values are ignored.
 | `WEBHOOK_SECRET` | Render only; letters, digits, `_` and `-` |
 | `ADMIN_IDS` / `ADMIN_USERNAMES` | who can use `/admin` |
 | `ALLOWED_IDS` / `ALLOWED_USERNAMES` | who can use the bot |
-| `GEMINI_API_KEY` | enables `/analyze` and `/desc` |
+| `GEMINI_API_KEY` | enables `/analyze`, `/listing` and `/desc` |
 | `GEMINI_MODEL` | pin a model; otherwise current models are tried in order |
 | `GEMINI_BASE_URL` | override for a proxy |
 | `GEMINI_TRANSPORT` | `auto`, `interactions`, or `generatecontent` |
@@ -191,7 +202,7 @@ variables win, and blank values are ignored.
 python -m pytest
 ```
 
-179 tests cover de-duplication, the classification rules (including the
+192 tests cover de-duplication, the classification rules (including the
 level-only and missing-is-not-zero guards), rarity, report structure, the numeric
 guard, both description types, both Gemini transports against a mock server, the
 pipeline end to end, and the bot wiring. No network or API key is needed.
