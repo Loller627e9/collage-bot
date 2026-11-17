@@ -680,6 +680,21 @@ async def try_launch(app: Application, chat_id: int, uid: int, s: Session) -> No
     BUILD_TASKS[uid] = app.create_task(build_and_send(app.bot, chat_id, uid, s.items, replace(prefs_for(uid))))
 
 
+def _schedule_timer(app: Application, chat_id: int, uid: int, s: Session) -> asyncio.Task:
+    """Start the debounce timer that auto-builds after a quiet period.
+
+    ``Application.create_task`` wraps our coroutine in its own callback, so
+    cancelling the timer before it takes its first step (a second image arrives
+    within ``AUTO_BUILD_SEC``, or /done, /clear, /analyze, /ban) leaves our
+    coroutine un-awaited and Python warns "was never awaited" at GC. Closing it
+    in the done callback prevents that; ``close()`` is a no-op once it has run.
+    """
+    coro = _auto_build(app, chat_id, uid, s)
+    task = app.create_task(coro)
+    task.add_done_callback(lambda _task: coro.close())
+    return task
+
+
 async def _auto_build(app: Application, chat_id: int, uid: int, s: Session) -> None:
     try:
         await asyncio.sleep(AUTO_BUILD_SEC)
@@ -1012,7 +1027,7 @@ async def on_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if len(s.items) >= MAX_IMAGES:
         await try_launch(app, chat_id, uid, s)
     else:
-        s.timer = app.create_task(_auto_build(app, chat_id, uid, s))
+        s.timer = _schedule_timer(app, chat_id, uid, s)
 
 
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
