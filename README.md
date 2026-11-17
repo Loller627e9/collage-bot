@@ -1,220 +1,213 @@
-# 📸 PGXC Collage Bot
-### 🤖 Multi-Account Screenshot Collage Engine for Telegram
+# TTC Collage Bot + Pokémon GO Account Investigator
 
+A private Telegram bot that turns Pokémon GO screenshots into a shareable collage,
+and — optionally — into an evidence-based account investigation with a
+MINI / MID / STACKED classification and a written description.
 
----
+Two features, one bot:
 
-## ⚠️ Requirements
-> 🐍 Python 3.10+  
-> 🤖 A Telegram Bot Token from [@BotFather](https://t.me/BotFather)  
-> 🆔 Your Telegram User ID from [@userinfobot](https://t.me/userinfobot)
-
----
-
-## ✨ Features
-
-🚀 **Auto-Build Engine** — Builds collages automatically after 2 seconds of inactivity  
-⚡ **Batch Mode** — Queue all images first, auto-builds after 10 seconds of silence  
-🎨 **4 Smart Layouts** — Auto, Horizontal, Wide, Vertical  
-🖼 **Inline Editing** — Rebuild with different settings after delivery, no re-upload needed  
-💧 **Watermark** — Add a custom text label to any collage  
-📱 **Crop UI** — Strips phone status bars and navigation bars automatically  
-✨ **Enhance Mode** — Sharpness, contrast and brightness boost  
-📦 **Up to 20 images** per collage, delivered as full-quality JPEG  
-🔐 **Admin Panel** — Ban/unban users, broadcast messages, live stats  
+1. **Collage** — send screenshots, get one clean collage. Every image keeps its own
+   aspect ratio, nothing is cropped or stretched.
+2. **Account investigation** — send account screenshots, send `/analyze`, and get a
+   classification, an evidence-labelled report, and a description in one of two
+   styles: **Eldorado** (showpiece listing) or **Auction** (itemised lot notes).
 
 ---
 
-## 🧠 How It Works
+## Why the investigation is built as two functions
 
-```mermaid
-flowchart TD
-    A[User sends images] --> B[Bot queues photos]
-    B --> C{Mode?}
-    C -->|Normal| D[Wait 2s idle]
-    C -->|Batch| E[Wait 10s idle]
-    D --> F[Download images from Telegram]
-    E --> F
-    F --> G[Apply crop / enhance]
-    G --> H[Render collage grid]
-    H --> I[Add watermark if set]
-    I --> J[Send as JPEG document]
-    J --> K[Inline keyboard for edits]
-    K --> F
-```
+The obvious approach — one AI prompt that looks at screenshots and writes a
+description — hallucinates. It invents shiny counts, guesses at rarity, and calls
+every shiny "extremely rare".
 
----
+This project separates the job:
 
-## 📦 Installation
-
-```bash
-git clone https://github.com/your-username/pgxc-collage-bot.git
-cd pgxc-collage-bot
-pip install -r requirements.txt
-```
-
----
-
-## ⚙️ Configuration
-
-Copy the env template and fill in your values:
-
-```bash
-cp _env .env
-```
-
-Edit `.env`:
-
-```env
-BOT_TOKEN=your_bot_token_from_botfather
-ADMIN_IDS=your_telegram_user_id
-```
-
-> For multiple admins: `ADMIN_IDS=111111,222222`
-
----
-
-## ▶️ Run
-
-```bash
-python bot.py
-```
-
----
-
-## 🤖 Commands
-
-> 💡 **No prefix needed** — just send images and the bot does the rest
-
-### 🖼 Collage Controls
-
-| Command | Description |
-|---|---|
-| `/batch` | Queue mode — auto-builds after 10 s of inactivity |
-| `/layout` | Choose collage grid style |
-| `/quality <1–95>` | Set JPEG output quality |
-| `/watermark <text>` | Add or remove a watermark label |
-| `/cropui` | Toggle removal of phone status/nav bars |
-| `/enhance` | Toggle sharpness and colour boost |
-
-### 📋 Queue Management
-
-| Command | Description |
-|---|---|
-| `/undo` | Remove last queued image |
-| `/remove <n>` | Remove image at position n |
-| `/count` | How many images are queued |
-| `/status` | Show all current settings |
-| `/clear` | Reset queue and settings |
-
-### 🔐 Admin Only
-
-| Command | Description |
-|---|---|
-| `/adminhelp` | Show full admin reference |
-| `/ban <id>` | Ban a user (or reply to message) |
-| `/unban <id>` | Unban a user |
-| `/banlist` | List all banned users |
-| `/broadcast <msg>` | Message all active sessions |
-| `/setwelcome <text>` | Set custom welcome message |
-| `/resetwelcome` | Restore default welcome message |
-| `/stats` | Sessions, queues, and ban counts |
-
----
-
-## 🎨 Layout Options
-
-| Layout | Preview | Description |
+| Stage | Responsibility | Can it invent numbers? |
 |---|---|---|
-| **Auto** | `▦` | Best-fit grid chosen automatically |
-| **Horizontal** | `▬` | Single row |
-| **Wide** | `▬▬` | Two rows |
-| **Vertical** | `▮` | Single column |
+| **Account Scanner** (Gemini) | Read screenshots, emit structured JSON facts only | No — it is told to use `null` when something is not visible |
+| **Rules engines** (pure Python) | MINI/MID/STACKED classification, rarity labels, report tables | No — deterministic weights and thresholds |
+| **Writer** (Gemini) | Narrative prose over the JSON and the rules output | Checked — numbers in prose the scan cannot support are flagged |
+
+The AI reads pixels and writes words. It never decides how good an account is, and
+it never sees the screenshots when it writes the prose, so it cannot invent from
+them. Classification and rarity are reproducible and auditable.
 
 ---
 
-## 📁 Project Structure
-
-```
-PGXCCollageBot/
-├── bot.py               # Main bot — handlers, sessions, commands
-├── collage.py           # Collage rendering engine (Pillow)
-├── requirements.txt     # Python dependencies
-├── _env                 # Config template — copy to .env
-├── .gitignore           # Keeps secrets out of git
-├── README.md            # This file
-│
-# Created at runtime (never committed):
-├── .env                 # Your secrets
-└── bot_state.json       # Banned users + custom welcome message
-```
-
----
-
-## 📊 Real-Time Stats (via `/stats`)
-
-- 🧑‍💻 Total active sessions
-- 📬 Queues currently building
-- 🚫 Banned user count
-
----
-
-## 🔐 Security
-
-> ❗ **Never upload:**
-> - `.env`
-> - `bot_state.json`
-
-✔ Both are already covered by `.gitignore`  
-✔ `_env` is a safe placeholder template — no real credentials  
-✔ Rotate your bot token immediately if it was ever exposed  
-
----
-
-## 🛠 Dependencies
-
-| Package | Purpose |
-|---|---|
-| `python-telegram-bot` | Telegram Bot API wrapper |
-| `Pillow` | Image processing and collage rendering |
-| `python-dotenv` | Load secrets from `.env` |
-| `httpx` | HTTP client for Telegram API |
+## Quick start
 
 ```bash
 pip install -r requirements.txt
 ```
 
----
+Set at least one admin or allowed entry (environment variable or `config.py`), then:
 
-## 🔥 Future Plans
+```bash
+BOT_TOKEN=... ADMIN_IDS=123456789 GEMINI_API_KEY=... python bot.py
+```
 
-- 🌐 Web dashboard for managing sessions
-- 📊 Per-user collage analytics
-- 🗄 Database backend for persistent sessions
-- 🖼 PNG and WebP output support
-- ⚙️ Custom grid templates
+On Render, set the same names in the Environment tab. `RENDER_EXTERNAL_URL` switches
+the bot to webhook mode automatically; locally it polls.
 
----
-
-## 👨‍💻 Author
-
-Built by **PGXC** ⚡ Collage automation for power users
+Without `GEMINI_API_KEY` the collage features work normally and `/analyze` replies
+that investigation needs a key — it never invents an account profile.
 
 ---
 
-## ⭐ Support
+## Using it
 
-If you find this useful:
-- ⭐ Star the repo
-- 🍴 Fork it
-- 🚀 Improve it
+Send up to 20 images. The collage builds after 10 seconds of quiet, or on `/done`.
+
+| Command | What it does |
+|---|---|
+| `/done` | Build the collage now |
+| `/layout` | Choose grid style (Auto, or 1–8 per row) |
+| `/watermark` | Add or remove the watermark |
+| `/quality` | Set JPEG quality (1–95) |
+| `/analyze` | Classify the account and write the report |
+| `/desc` | Choose Eldorado, Auction, or both |
+| `/status` | Current settings |
+| `/clear` | Reset the queue |
+| `/id` | Show your Telegram ID |
+| `/admin` | Admin panel (admins only) |
+
+**Investigation flow:** send the account screenshots (trainer profile, Pokémon
+storage, Pokédex, medals), pick a style with `/desc`, then `/analyze`. `/analyze`
+remembers your last batch, so it still works after the collage has auto-built.
 
 ---
 
-## 📜 License
+## The report
 
-MIT License — do whatever you want, just don't blame me if it breaks.
+The report uses the required structure:
+
+```
+ACCOUNT CLASSIFICATION: MINI / MID / STACKED
+
+ACCOUNT OVERVIEW
+COLLECTION ANALYSIS
+RESOURCE ANALYSIS
+RARE ASSETS
+ACCOUNT STRENGTHS
+ACCOUNT WEAKNESSES
+FINAL DESCRIPTION
+CONFIDENCE
+```
+
+The overview, collection and resource tables are assembled from the scan, so their
+numbers always match the evidence. Anything not visible is written as
+**"Not visible"** — never as `0`.
 
 ---
 
-> ⚡ *Send. Queue. Collage. Done.*
+## Classification rules
+
+The spec sets two rules, and both are enforced structurally in
+`pokego/classification.py`:
+
+- **Never classify on Trainer Level alone.** A single observation can never lift an
+  account above MINI, so a screenshot showing only a level returns MINI with LOW
+  confidence.
+- **Never treat missing information as zero.** A value that was never visible is
+  excluded from both the numerator and the denominator. Absent evidence neither
+  helps nor hurts the score; a separate coverage figure records how much was
+  actually seen.
+
+The score blends **progression** (level, Pokédex, caught, stardust, XP, candy,
+medals) with **collection quality**, which is scored per Pokémon — a shiny
+legendary, a shundo or a legacy move carries weight even in a small sample. A
+STACKED verdict additionally requires that the collection was actually seen,
+matching the spec's own definition.
+
+---
+
+## Descriptions
+
+Two styles, both generated from the same verified facts:
+
+- **Eldorado** — showpiece listing copy. Vivid, but bounded by the facts. A weak
+  account is described honestly rather than oversold.
+- **Auction** — itemised lot notes: `LOT HIGHLIGHTS`, `PROGRESSION`, `RESOURCES`,
+  `EVIDENCE`.
+
+Both carry the same notice: no price is estimated, the description reflects the
+supplied screenshots only, and account trading is restricted by the game's terms.
+
+---
+
+## Layout
+
+```
+bot.py                 the bot (collage + investigation wiring)
+config.py              optional settings; env vars win
+pokego/
+  schema.py            data model, evidence status, de-duplication
+  classification.py    deterministic MINI / MID / STACKED
+  rarity.py            curated species data + rarity rules
+  report.py            report tables + numeric guard
+  descriptions.py      Eldorado and Auction
+  gemini.py            API client (interactions + generateContent, fallback)
+  prompts.py           Scanner and Writer prompts
+  pipeline.py          orchestration
+tests/                 159 tests, no network or API key required
+```
+
+---
+
+## Configuration
+
+Every setting can come from an environment variable or `config.py`. Environment
+variables win, and blank values are ignored.
+
+| Setting | Meaning |
+|---|---|
+| `BOT_TOKEN` | from @BotFather (required) |
+| `WEBHOOK_SECRET` | Render only; letters, digits, `_` and `-` |
+| `ADMIN_IDS` / `ADMIN_USERNAMES` | who can use `/admin` |
+| `ALLOWED_IDS` / `ALLOWED_USERNAMES` | who can use the bot |
+| `GEMINI_API_KEY` | enables `/analyze` and `/desc` |
+| `GEMINI_MODEL` | pin a model; otherwise current models are tried in order |
+| `GEMINI_BASE_URL` | override for a proxy |
+| `GEMINI_TRANSPORT` | `auto`, `interactions`, or `generatecontent` |
+| `DEFAULT_DESCRIPTION` | `eldorado` or `auction` |
+| `WATERMARK_TEXT` | watermark text (basic Latin only) |
+| `PROTECT_CONTENT` | stop recipients forwarding the collage |
+
+---
+
+## Tests
+
+```bash
+python -m pytest
+```
+
+159 tests cover de-duplication, the classification rules (including the
+level-only and missing-is-not-zero guards), rarity, report structure, the numeric
+guard, both description types, both Gemini transports against a mock server, the
+pipeline end to end, and the bot wiring. No network or API key is needed.
+
+---
+
+## Privacy and scope
+
+- Images are never written to disk. Each is downloaded into RAM and discarded.
+- Settings, bans and allowlist additions live in RAM and reset when the service
+  restarts.
+- The investigator reports only what the screenshots show. It does not assign
+  monetary value, does not invent prices, and does not facilitate account theft,
+  credential extraction, or unauthorised access.
+- Account trading is restricted by the Pokémon GO terms of service.
+
+---
+
+## Notes
+
+The Gemini client uses the standard library (`urllib`), matching the bot's
+dependency style — no SDK required. Both the `interactions` and `generateContent`
+endpoints are supported with automatic fallback, because Google is mid-migration
+between them. `gemini-2.5-flash` is deprecated for new API users, so the fallback
+list starts at `gemini-3.8-flash`.
+
+The rarity dataset in `pokego/rarity.py` is a curated snapshot of documented
+species classes, not a live database. It is plain data: correct or extend it
+without touching logic.
